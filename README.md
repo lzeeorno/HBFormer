@@ -1,5 +1,5 @@
 # HBFormer
-IEEE International Conference on Bioinformatics and Biomedicine (BIBM 2025)
+Accepted by IEEE International Conference on Bioinformatics and Biomedicine (BIBM 2025)
 # 🛎 Citation
 
 If you find our work helpful for your research, please cite:
