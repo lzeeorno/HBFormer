@@ -1,12 +1,9 @@
+# HBFormer： A Hybrid-Bridge Transformer for Microtumor and Miniature Organ Segmentation
+
+# 🛎 Citation
 # HBFormer
 Accepted by IEEE International Conference on Bioinformatics and Biomedicine (BIBM 2025)
 
-# 🛎 Citation
-
-- **多数据集**: Synapse（8器官）、LiTS2017（肝脏/肿瘤）、ACDC（心脏3类）、Bladder（膀胱/肿瘤）。
-- **两种验证模式（Synapse）**: 体数据验证（.npy.h5）与切片验证（.npz，与训练一致）。
-- **可视化**: 预测对比、注意力/激活热图、3D/切片交互查看。
-- **日志与记录**: 训练/验证 CSV 记录、best/latest 权重保存、可配置保存间隔。
 ---
 
 If you find our work helpful for your research, please cite:
@@ -50,6 +47,10 @@ AFFSegNnet_VMUnetVis/
 ├── 3D_Vis/                      # 3D/切片查看工具
 └── utils.py                     # 通用工具、日志、优化器/调度器构建
 ```
+- **多数据集**: Synapse（8器官）、LiTS2017（肝脏/肿瘤）、ACDC（心脏3类）、Bladder（膀胱/肿瘤）。
+- **两种验证模式（Synapse）**: 体数据验证（.npy.h5）与切片验证（.npz，与训练一致）。
+- **可视化**: 预测对比、注意力/激活热图、3D/切片交互查看。
+- **日志与记录**: 训练/验证 CSV 记录、best/latest 权重保存、可配置保存间隔。**
 
 ---
 
