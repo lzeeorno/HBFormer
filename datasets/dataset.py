@@ -109,18 +109,24 @@ class Synapse_dataset(Dataset):
         return len(self.sample_list)
 
     def __getitem__(self, idx):
-        if self.split == "train":
-            # 训练和slice测试都使用.npz文件
+        if self.split in ["train", "test_slice"]:
+            # 训练与 slice 验证均使用 .npz 文件（位于 train_npz）
             slice_name = self.sample_list[idx].strip('\n')
-            data_path = os.path.join(self.data_dir, slice_name+'.npz')
+            data_path = os.path.join(self.data_dir, slice_name + '.npz')
+            if not os.path.exists(data_path):
+                raise FileNotFoundError(f"找不到切片数据文件: {data_path}")
             data = np.load(data_path)
             image, label = data['image'], data['label']
-        else:
-            # volume测试使用.npy.h5文件
+        elif self.split in ["test_vol", "val_vol"]:
+            # 体数据验证/测试使用 .npy.h5 文件（位于 test_vol_h5）
             vol_name = self.sample_list[idx].strip('\n')
-            filepath = self.data_dir + "/{}.npy.h5".format(vol_name)
-            data = h5py.File(filepath)
-            image, label = data['image'][:], data['label'][:]
+            filepath = os.path.join(self.data_dir, f"{vol_name}.npy.h5")
+            if not os.path.exists(filepath):
+                raise FileNotFoundError(f"找不到体数据文件: {filepath}")
+            with h5py.File(filepath, 'r') as data:
+                image, label = data['image'][:], data['label'][:]
+        else:
+            raise ValueError(f"不支持的split类型: {self.split}")
 
         sample = {'image': image, 'label': label}
         if self.transform:
