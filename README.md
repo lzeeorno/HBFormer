@@ -58,8 +58,8 @@ AFFSegNnet_VMUnetVis/
 
 ### 推荐（Python 3.8 + PyTorch 1.13，CUDA 11.7）
 ```bash
-conda create -n vmunet python=3.8 -y
-conda activate vmunet
+conda create -n hbformer python=3.8 -y
+conda activate hbformer
 pip install torch==1.13.0 torchvision==0.14.0 torchaudio==0.13.0 \
   --extra-index-url https://download.pytorch.org/whl/cu117
 pip install packaging timm==0.4.12 pytest chardet yacs termcolor
