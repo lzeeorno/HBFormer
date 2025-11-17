@@ -177,21 +177,6 @@ python train_bladder.py
 
 目录：`pre_trained_weights/`
 
-### VMUNet 预训练（示例）
-1) 将 `vmamba_small_e238_ema.pth` 放至 `pre_trained_weights/`。
-2) 在 `configs/config_setting_synapse.py` 中切换到 VMUNet：
-```python
-setting_config.set_model('vmunet')
-```
-3) 在同文件的 `vmunet_config` 中设置：
-```python
-"load_ckpt_path": "pre_trained_weights/vmamba_small_e238_ema.pth"
-```
-4) 运行训练：
-```bash
-python train_synapse.py
-```
-
 提示：若使用 `AFFSegNet`/`DWSegNet`/`HBFormer` 的外部权重，可在各自 `model_config` 中设置 `load_ckpt_path`（若脚本支持），或在训练脚本中按需加载。
 
 ---
