@@ -23,6 +23,13 @@ import argparse
 import math
 import cv2
 
+try:
+    # 作为包导入时
+    from .swin_backbone import SwinBackbone
+except ImportError:
+    # 直接运行 python models/HBFormer.py 时
+    from swin_backbone import SwinBackbone
+
 
 
 def parse_args():
@@ -941,91 +948,24 @@ class HBFormer(nn.Module):
         self.patch_size = 2
         self.classification = False
         self.patch_norm = False
-        num_heads = num_heads
-        window_size = 7
-        mlp_ratio = 4.0
-        qkv_bias = True
-        qk_scale = None
-        attn_drop = 0.0
-        drop_path_rate = 0.2
-        depths = [2, 2, 2, 2]
 
-        # stochastic depth
-        dpr = [x.item() for x in torch.linspace(0, drop_path_rate, sum(depths))]  # stochastic depth decay rule
-
+        # 原始输入预处理保持不变
         self.input_proj = nn.Conv2d(in_channels, 3, kernel_size=1)
+        # 直接使用 SwinBackbone 作为编码器；优先用7，否则选择能整除特征图的窗口
+        swin_pretrained = getattr(args, 'swin_pretrained_path', 'pre_trained_weights/swin_tiny_patch4_window7_224.pth')
+        grid_size = img_size[0] // 4
+        for cand in [7, 8, 6, 5, 4]:
+            if grid_size % cand == 0:
+                swin_window = cand
+                break
+        self.MWAencoder = SwinBackbone(pretrained_path=swin_pretrained, img_size=img_size[0], window_size=swin_window)
 
-        self.patch_embed = PatchEmbed(
-            patch_size=self.patch_size, in_chans=3, embed_dim=feature_size,
-            norm_layer=nn.LayerNorm if self.patch_norm else None)
-
-        self.MWA_encoder1 = nn.Sequential(
-            Encoder(
-                dim=int(feature_size),
-                depth=depths[0],
-                num_heads=num_heads[0],
-                window_size=window_size,
-                mlp_ratio=mlp_ratio,
-                qkv_bias=qkv_bias,
-                qk_scale=qk_scale,
-                drop=dropout_rate,
-                attn_drop=attn_drop,
-                drop_path=dpr[sum(depths[:0]):sum(depths[:0 + 1])],
-                norm_layer=nn.LayerNorm,
-                downsample=PatchMerging),
-            ResConvBlock(feature_size * 2, feature_size * 2, stride=1, norm=None)
-        )
-
-        self.MWA_encoder2 = nn.Sequential(
-            Encoder(
-                dim=int(feature_size * 2),
-                depth=depths[1],
-                num_heads=num_heads[1],
-                window_size=window_size,
-                mlp_ratio=mlp_ratio,
-                qkv_bias=qkv_bias,
-                qk_scale=qk_scale,
-                drop=dropout_rate,
-                attn_drop=attn_drop,
-                drop_path=dpr[sum(depths[:1]):sum(depths[:1 + 1])],
-                norm_layer=nn.LayerNorm,
-                downsample=PatchMerging),
-            ResConvBlock(feature_size * 4, feature_size * 4, stride=1, norm=None)
-        )
-
-        self.MWA_encoder3 = nn.Sequential(
-            Encoder(
-                dim=int(feature_size * 4),
-                depth=depths[2],
-                num_heads=num_heads[2],
-                window_size=window_size,
-                mlp_ratio=mlp_ratio,
-                qkv_bias=qkv_bias,
-                qk_scale=qk_scale,
-                drop=dropout_rate,
-                attn_drop=attn_drop,
-                drop_path=dpr[sum(depths[:2]):sum(depths[:2 + 1])],
-                norm_layer=nn.LayerNorm,
-                downsample=PatchMerging),
-            ResConvBlock(feature_size * 8, feature_size * 8, stride=1, norm=None)
-        )
-
-        self.MWA_encoder4 = nn.Sequential(
-            Encoder(
-                dim=int(feature_size * 8),
-                depth=depths[3],
-                num_heads=num_heads[1],
-                window_size=window_size,
-                mlp_ratio=mlp_ratio,
-                qkv_bias=qkv_bias,
-                qk_scale=qk_scale,
-                drop=dropout_rate,
-                attn_drop=attn_drop,
-                drop_path=dpr[sum(depths[:3]):sum(depths[:3 + 1])],
-                norm_layer=nn.LayerNorm,
-                downsample=PatchMerging),
-            ResConvBlock(feature_size * 16, feature_size * 16, stride=1, norm=None)
-        )
+        # 将 Swin 各 stage 输出映射到原来解码器期望的通道数
+        # SwinTiny stages: [96, 192, 384, 768]
+        self.proj_enc1 = nn.Conv2d(96,  feature_size * 1, kernel_size=1)
+        self.proj_enc2 = nn.Conv2d(192, feature_size * 2, kernel_size=1)
+        self.proj_enc3 = nn.Conv2d(384, feature_size * 4, kernel_size=1)
+        self.proj_enc4 = nn.Conv2d(768, feature_size * 8, kernel_size=1)
 
         self.bottleneck = nn.Sequential(
             
@@ -1044,19 +984,22 @@ class HBFormer(nn.Module):
 
     def forward(self, x_in):
         x_in = self.input_proj(x_in)
+        # Swin 编码器：输出4个尺度特征
+        feats = self.MWAencoder(x_in)
+        c1, c2, c3, c4 = feats
 
-        x = self.patch_embed(x_in)
-        '''MWA Encoder'''
-        enc1 = self.MWA_encoder1(x)
-        enc2 = self.MWA_encoder2(enc1)
-        enc3 = self.MWA_encoder3(enc2)
-        enc4 = self.MWA_encoder4(enc3)
+        # 投影到原HBFormer解码器期望的通道维度
+        x       = self.proj_enc1(c1)
+        enc1    = self.proj_enc2(c2)
+        enc2    = self.proj_enc3(c3)  # skip for dec3 (192 channels, 1/16 res)
+        enc3_sk = c3                  # skip for dec4 (384 channels, 1/16 res)
+        enc4    = c4                  # deepest feature (768 channels, 1/32 res)
 
         '''MFF Decoder'''
-        dec4 = self.MFF_decoder4(enc4, enc3) #[1, 768, 16, 16][1, 384, 32, 32]->[1, 384, 32, 32]
-        dec3 = self.MFF_decoder3(dec4, enc2) #[1, 384, 32, 32][1, 192, 64, 64]->[1, 192, 64, 64]
-        dec2 = self.MFF_decoder2(dec3, enc1) #[1, 192, 64, 64][1, 96, 128, 128]->[1, 96, 128, 128]
-        dec1 = self.MFF_decoder1(dec2, x) #[1, 96, 128, 128][1, 48, 256, 256]->[1, 48, 256, 256]
+        dec4 = self.MFF_decoder4(enc4, enc3_sk)
+        dec3 = self.MFF_decoder3(dec4, F.interpolate(enc2, scale_factor=2, mode='bilinear', align_corners=True))
+        dec2 = self.MFF_decoder2(dec3, F.interpolate(enc1, scale_factor=2, mode='bilinear', align_corners=True))
+        dec1 = self.MFF_decoder1(dec2, F.interpolate(x, scale_factor=2, mode='bilinear', align_corners=True))
 
         out = self.out(dec1)
 
@@ -1065,16 +1008,21 @@ class HBFormer(nn.Module):
 
 '''
 检查模型是否能够创建并输出期望的维度
-      - Flops:  117.86 GMac
-      - Params: 42.66 M
+      - Flops:  80.32 GMac
+      - Params: 30.05 M
 '''
-args = parse_args()
-model = HBFormer(args)
-flops, params = get_model_complexity_info(model, input_res=(3, 512, 512), as_strings=True, print_per_layer_stat=False)
-print('      - Flops:  ' + flops)
-print('      - Params: ' + params)
-x = torch.randn(1, 3, 512, 512)
-with torch.no_grad():  # 在不计算梯度的情况下执行前向传播
-    out = model(x)
-print('Final Output:')
-print(out.shape)  # 输出预期是与分类头的输出通道数匹配的特征图
+# if __name__ == "__main__":
+#     args = parse_args()
+#     model = HBFormer(args, img_size=(512, 512), feature_size=48)
+#     model.cuda()
+#     flops, params = get_model_complexity_info(
+#         model, input_res=(3, 512, 512), as_strings=True,
+#         print_per_layer_stat=False
+#     )
+#     print('      - Flops:  ' + flops)
+#     print('      - Params: ' + params)
+#     x = torch.randn(1, 3, 512, 512).cuda()
+#     with torch.no_grad():  # 在不计算梯度的情况下执行前向传播
+#         out = model(x)
+#     print('Final Output:')
+#     print(out.shape)  # 输出预期是与分类头的输出通道数匹配的特征图
