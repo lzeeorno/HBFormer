@@ -196,7 +196,8 @@ python train_bladder.py
 
 目录：`pre_trained_weights/`
 
-提示：若使用 `AFFSegNet`/`DWSegNet`/`HBFormer` 的外部权重，可在各自 `model_config` 中设置 `load_ckpt_path`（若脚本支持），或在训练脚本中按需加载。
+提示：we use the swin Transformer's '[swin_tiny_patch4_window7_224.pth]([https://huggingface.co](https://huggingface.co/lzeeorno666/HBFormer-Synapse-Multi-Organ-Segmentation/resolve/main/pre_trained_weights/swin_tiny_patch4_window7_224.pth?download=true))'
+
 
 ---
 
