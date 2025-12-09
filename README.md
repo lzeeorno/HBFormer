@@ -99,6 +99,18 @@ pip install ptflops  # 计算FLOPs/参数量
 └── test_vol_h5/                # 体数据 .npy.h5（体验证使用）
     └── caseXXXX.npy.h5         # 含键 image/label
 ```
+### Synapse（8类）test result follow SwinUnet‘s test framework
+================================================================================
+ 测试完成！
+================================================================================
+ Slice评估 Dice: 0.9856, HD95: 0.0000, mIoU: 0.9743
+ Volume评估 Dice: 0.8782, HD95: 6.9185
+ 结果保存路径: test_result/HBFormer_synapse
+️  预测可视化: test_result/HBFormer_synapse/prediction_visualization
+ 注意力热图: test_result/HBFormer_synapse/attention_heatmaps
+⚡ 激活热图: test_result/HBFormer_synapse/activation_heatmaps
+================================================================================
+
 获取方式：可参考 Swin-UNet 的 Synapse 数据下载与预处理，或使用你已有的预处理结果。若需自制 `.npz`，可参考 `data_proprecessing.py` 示例将 NIfTI 切片为 `.npz`（确保 `.npz` 内含键 `image` 与 `label`，并与 `test_slice.txt` 命名一致）。
 
 `test_slice.txt` 样例（每行一个切片名，不带扩展名）：
