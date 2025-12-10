@@ -62,65 +62,71 @@ class LitsRandomGenerator(object):
 class LiTS2017_dataset(Dataset):
     def __init__(self, data_dir, split='train', transform=None, fold=None, num_folds=5, cross_validation=False):
         """
-        LITS2017预处理PNG数据集加载器，支持五折交叉验证
-        
+        LITS2017预处理PNG数据集加载器
+
         Args:
-            data_dir: 数据根目录，包含CT_lits2017_png和Mask_lits2017_png子目录
+            data_dir: 数据根目录，包含trainImage_lits2017_png/trainMask_lits2017_png
+                     和testImage_lits2017_png/testMask_lits2017_png子目录
             split: 'train', 'val', 'test'之一
             transform: 数据变换
-            fold: 当前fold编号 (0-4)，仅在cross_validation=True时使用
-            num_folds: 交叉验证折数，默认5
-            cross_validation: 是否启用交叉验证模式
+            fold, num_folds, cross_validation: 为兼容旧接口保留，但当前版本默认
+                     使用 train 目录内部的 80/20 划分做 train/val，test 目录只
+                     用于 split='test' 时的测试，不再对所有样本做KFold划分。
         """
         self.data_dir = data_dir
         self.split = split
         self.transform = transform
+
+        # 兼容旧接口参数但不再使用KFold做全量划分
         self.fold = fold
         self.num_folds = num_folds
         self.cross_validation = cross_validation
-        
-        # PNG数据路径
-        self.ct_dir = os.path.join(data_dir, 'CT_lits2017_png')
-        self.mask_dir = os.path.join(data_dir, 'Mask_lits2017_png')
-        
-        # 获取所有PNG文件
+
+        # 按用户磁盘结构区分 train/test 四个目录
+        if split in ['train', 'val']:
+            self.ct_dir = os.path.join(data_dir, 'trainImage_lits2017_png')
+            self.mask_dir = os.path.join(data_dir, 'trainMask_lits2017_png')
+        elif split == 'test':
+            self.ct_dir = os.path.join(data_dir, 'testImage_lits2017_png')
+            self.mask_dir = os.path.join(data_dir, 'testMask_lits2017_png')
+        else:
+            raise ValueError(f"不支持的split: {split}，必须是'train'/'val'/'test'")
+
         ct_files = sorted(glob.glob(os.path.join(self.ct_dir, '*.png')))
         mask_files = sorted(glob.glob(os.path.join(self.mask_dir, '*.png')))
-        
-        # 确保CT和mask文件数量一致
+
         assert len(ct_files) == len(mask_files), f"CT文件数({len(ct_files)})与mask文件数({len(mask_files)})不一致"
-        
-        # 提取文件名并验证配对
+
+        # 提取基名并验证配对
         all_samples = []
         for ct_file in ct_files:
             ct_name = os.path.basename(ct_file)
             mask_file = os.path.join(self.mask_dir, ct_name)
             if os.path.exists(mask_file):
-                all_samples.append(ct_name[:-4])  # 移除.png后缀
-        
-        print(f"总共找到 {len(all_samples)} 个有效的LITS2017 PNG样本")
-        
-        if self.cross_validation and fold is not None:
-            # 使用五折交叉验证模式
-            self.samples = self._get_fold_samples(all_samples, split, fold, num_folds)
-        else:
-            # 简单的训练/验证/测试分割（70%/15%/15%）
+                all_samples.append(ct_name[:-4])
+
+        print(f"LITS2017 {split} 目录下共找到 {len(all_samples)} 个有效PNG样本")
+
+        # 仅对 train 目录内部做 train/val 划分；test 目录完全作为测试集
+        if split in ['train', 'val']:
             np.random.seed(42)
-            shuffled_samples = np.array(all_samples)
-            np.random.shuffle(shuffled_samples)
-            
-            n_total = len(shuffled_samples)
-            n_train = int(0.7 * n_total)
-            n_val = int(0.15 * n_total)
-            
+            shuffled = np.array(all_samples)
+            np.random.shuffle(shuffled)
+
+            n_total = len(shuffled)
+            # 用户说明：train 文件夹 19206 张 PNG 用于 train+val
+            # 这里按照 80%/20% 拆分
+            n_train = int(0.8 * n_total)
+
             if split == 'train':
-                self.samples = shuffled_samples[:n_train].tolist()
-            elif split == 'val':
-                self.samples = shuffled_samples[n_train:n_train+n_val].tolist()
-            else:  # test
-                self.samples = shuffled_samples[n_train+n_val:].tolist()
-        
-        print(f"LITS2017 {split} split (fold={fold}): {len(self.samples)} 样本")
+                self.samples = shuffled[:n_train].tolist()
+            else:  # 'val'
+                self.samples = shuffled[n_train:].tolist()
+        else:  # 'test'
+            # 测试集直接使用 test 目录全部样本
+            self.samples = all_samples
+
+        print(f"LITS2017 {split} split: {len(self.samples)} 样本")
         if len(self.samples) <= 20:
             print(f"样本列表: {self.samples}")
         else:
@@ -253,3 +259,27 @@ def get_lits_dataloader(data_dir, split, batch_size=1, num_workers=4,
     )
     
     return dataset, dataloader 
+
+class LitsValTransform(object):
+    def __init__(self, output_size):
+        self.output_size = output_size
+
+    def __call__(self, sample):
+        image, label = sample['image'], sample['label']
+        case_name = sample.get('case_name', '')
+
+        # resize 到固定大小
+        h, w = image.shape
+        if h != self.output_size[0] or w != self.output_size[1]:
+            image = cv2.resize(image, (self.output_size[1], self.output_size[0]), interpolation=cv2.INTER_LINEAR)
+            label = cv2.resize(label, (self.output_size[1], self.output_size[0]), interpolation=cv2.INTER_NEAREST)
+
+        image_tensor = torch.from_numpy(image.astype(np.float32))
+        channel1 = image_tensor
+        channel2 = torch.clamp(image_tensor * 1.2, 0, 1)
+        channel3 = F.avg_pool2d(image_tensor.unsqueeze(0).unsqueeze(0),
+                                kernel_size=3, stride=1, padding=1).squeeze()
+        image = torch.stack([channel1, channel2, channel3], dim=0)
+
+        label = torch.from_numpy(label.astype(np.float32))
+        return {'image': image, 'label': label.long(), 'case_name': case_name}
