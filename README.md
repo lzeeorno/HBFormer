@@ -1,4 +1,4 @@
-# HBFormer： A Hybrid-Bridge Transformer for Microtumor and Miniature Organ Segmentation
+# [HBFormer： A Hybrid-Bridge Transformer for Microtumor and Miniature Organ Segmentation](https://doi.org/10.48550/arXiv.2512.03597)
 
 # 🛎 Citation
 # HBFormer
